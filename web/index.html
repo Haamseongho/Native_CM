@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CM 패키지 업무 대시보드</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app" v-cloak>
+      <aside class="sidebar" :class="{ open: isMenuOpen }">
+        <div class="brand">
+          <span class="brand-mark">CM</span>
+          <div>
+            <strong>Native CM</strong>
+            <small>패키지 업무 대시보드</small>
+          </div>
+        </div>
+
+        <nav class="nav">
+          <button
+            v-for="item in navigation"
+            :key="item.id"
+            type="button"
+            :class="{ active: activeView === item.id }"
+            @click="setView(item.id)"
+          >
+            <span>{{ item.icon }}</span>
+            {{ item.label }}
+          </button>
+        </nav>
+      </aside>
+
+      <main class="shell">
+        <header class="topbar">
+          <button class="icon-button menu-button" type="button" @click="isMenuOpen = !isMenuOpen" aria-label="메뉴 열기">
+            ☰
+          </button>
+          <div>
+            <p class="eyebrow">Project Change Management</p>
+            <h1>{{ currentTitle }}</h1>
+          </div>
+          <div class="topbar-actions">
+            <label class="search">
+              <span>검색</span>
+              <input v-model="keyword" type="search" placeholder="프로젝트, CM, TSR 검색" />
+            </label>
+            <button class="primary-button" type="button" @click="activeView = 'reports'">보고서 생성</button>
+          </div>
+        </header>
+
+        <section v-if="activeView === 'dashboard'" class="view">
+          <div class="summary-grid">
+            <article v-for="card in summaryCards" :key="card.label" class="metric-card">
+              <span>{{ card.label }}</span>
+              <strong>{{ card.value }}</strong>
+              <small>{{ card.note }}</small>
+            </article>
+          </div>
+
+          <div class="content-grid">
+            <section class="panel wide">
+              <div class="panel-head">
+                <div>
+                  <h2>프로젝트 완성도</h2>
+                  <p>산출물, CM, TSR, 증적 기준 종합 진행률</p>
+                </div>
+                <span class="status-chip">평균 {{ averageProgress }}%</span>
+              </div>
+              <div class="progress-list">
+                <article v-for="project in filteredProjects" :key="project.id" class="progress-row">
+                  <div>
+                    <strong>{{ project.id }} {{ project.name }}</strong>
+                    <small>{{ project.period }} · {{ project.owner }}</small>
+                  </div>
+                  <div class="progress-track" :aria-label="`${project.progress}%`">
+                    <span :style="{ width: project.progress + '%' }"></span>
+                  </div>
+                  <b>{{ project.progress }}%</b>
+                </article>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>TSR 결과</h2>
+                  <p>전체 테스트케이스 분포</p>
+                </div>
+              </div>
+              <div class="donut-wrap">
+                <div class="donut" :style="donutStyle">
+                  <span>{{ passRate }}%</span>
+                </div>
+                <div class="legend">
+                  <span><i class="pass"></i>PASS {{ totals.tsrPass }}</span>
+                  <span><i class="fail"></i>FAIL {{ totals.tsrFail }}</span>
+                  <span><i class="running"></i>진행중 {{ totals.tsrRunning }}</span>
+                  <span><i class="pending"></i>미수행 {{ totals.tsrPending }}</span>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>업무 병목</h2>
+                <p>완성도와 테스트 결과 기준으로 우선 확인할 항목</p>
+              </div>
+            </div>
+            <div class="issue-grid">
+              <article v-for="issue in bottlenecks" :key="issue.title" class="issue-card">
+                <span :class="['severity', issue.level]">{{ issue.levelText }}</span>
+                <strong>{{ issue.title }}</strong>
+                <p>{{ issue.description }}</p>
+              </article>
+            </div>
+          </section>
+        </section>
+
+        <section v-if="activeView === 'projects'" class="view">
+          <div class="toolbar">
+            <div class="segmented">
+              <button
+                v-for="status in projectStatuses"
+                :key="status"
+                type="button"
+                :class="{ active: selectedProjectStatus === status }"
+                @click="selectedProjectStatus = status"
+              >
+                {{ status }}
+              </button>
+            </div>
+          </div>
+
+          <div class="responsive-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>프로젝트</th>
+                  <th>상태</th>
+                  <th>완성도</th>
+                  <th>CM</th>
+                  <th>변경 파일</th>
+                  <th>TSR</th>
+                  <th>공수</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="project in projectRows" :key="project.id" @click="selectProject(project)">
+                  <td>
+                    <strong>{{ project.id }}</strong>
+                    <span>{{ project.name }}</span>
+                  </td>
+                  <td><span :class="['status-pill', statusClass(project.status)]">{{ project.status }}</span></td>
+                  <td>
+                    <div class="mini-progress"><span :style="{ width: project.progress + '%' }"></span></div>
+                    {{ project.progress }}%
+                  </td>
+                  <td>{{ project.cmCount }}개</td>
+                  <td>{{ project.fileCount }}개</td>
+                  <td>{{ project.tsrCount }}건</td>
+                  <td>{{ project.md }} MD</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section v-if="activeView === 'cm'" class="view">
+          <div class="card-grid">
+            <article v-for="cm in filteredCmPackages" :key="cm.id" class="cm-card">
+              <div class="card-head">
+                <span>{{ cm.projectId }}</span>
+                <span :class="['status-pill', statusClass(cm.status)]">{{ cm.status }}</span>
+              </div>
+              <h2>{{ cm.id }} {{ cm.title }}</h2>
+              <p>{{ cm.description }}</p>
+              <div class="cm-stats">
+                <span>파일 <b>{{ cm.files }}</b></span>
+                <span>커밋 <b>{{ cm.commits }}</b></span>
+                <span>TSR <b>{{ cm.tsr }}</b></span>
+                <span>공수 <b>{{ cm.md }}</b></span>
+              </div>
+              <div class="tag-row">
+                <span v-for="tag in cm.tags" :key="tag">{{ tag }}</span>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section v-if="activeView === 'changes'" class="view">
+          <div class="content-grid">
+            <section class="panel wide">
+              <div class="panel-head">
+                <div>
+                  <h2>변경 리소스</h2>
+                  <p>커밋 기준 파일 변경 전/후 및 영향도</p>
+                </div>
+              </div>
+              <div class="responsive-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>CM</th>
+                      <th>파일</th>
+                      <th>변경 유형</th>
+                      <th>영향도</th>
+                      <th>변경 요약</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="change in filteredChanges" :key="change.file">
+                      <td>{{ change.cmId }}</td>
+                      <td>
+                        <strong>{{ change.file }}</strong>
+                        <span>{{ change.path }}</span>
+                      </td>
+                      <td>{{ change.type }}</td>
+                      <td><span :class="['impact', change.impact]">{{ change.impactText }}</span></td>
+                      <td>{{ change.summary }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>리소스 실적</h2>
+                  <p>신규/수정/삭제 파일 집계</p>
+                </div>
+              </div>
+              <div class="stacked-bars">
+                <div v-for="project in projects" :key="project.id">
+                  <div class="bar-label">
+                    <span>{{ project.id }}</span>
+                    <b>{{ project.fileCount }}개</b>
+                  </div>
+                  <div class="stacked">
+                    <span class="new" :style="{ width: project.resource.new / project.fileCount * 100 + '%' }"></span>
+                    <span class="modify" :style="{ width: project.resource.modify / project.fileCount * 100 + '%' }"></span>
+                    <span class="delete" :style="{ width: project.resource.delete / project.fileCount * 100 + '%' }"></span>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section v-if="activeView === 'tsr'" class="view">
+          <div class="responsive-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>TSR</th>
+                  <th>프로젝트/CM</th>
+                  <th>변경 사항</th>
+                  <th>기기</th>
+                  <th>공수</th>
+                  <th>결과</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="test in filteredTsr" :key="test.id">
+                  <td>
+                    <strong>{{ test.id }}</strong>
+                    <span>{{ test.name }}</span>
+                  </td>
+                  <td>{{ test.projectId }} / {{ test.cmId }}</td>
+                  <td>{{ test.change }}</td>
+                  <td>{{ test.device }} · {{ test.os }}</td>
+                  <td>{{ test.md }} MD</td>
+                  <td><span :class="['status-pill', statusClass(test.result)]">{{ test.result }}</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section v-if="activeView === 'reports'" class="view">
+          <section class="panel report-panel">
+            <div class="panel-head">
+              <div>
+                <h2>개인 실적 보고서 미리보기</h2>
+                <p>현재 등록된 프로젝트, CM, 변경 파일, TSR 기준 자동 생성</p>
+              </div>
+              <button class="primary-button" type="button">Markdown 내보내기</button>
+            </div>
+            <div class="report-preview">
+              <h3>함성호 업무 실적 요약</h3>
+              <p>
+                총 {{ totals.projects }}개 프로젝트, {{ totals.cm }}개 CM 패키지, {{ totals.files }}개 변경 리소스,
+                {{ totals.commits }}건 커밋, {{ totals.tsr }}건 TSR 테스트케이스를 관리했습니다.
+              </p>
+              <div class="report-grid">
+                <span>PASS 테스트 <b>{{ totals.tsrPass }}건</b></span>
+                <span>총 공수 <b>{{ totals.md }} MD</b></span>
+                <span>평균 완성도 <b>{{ averageProgress }}%</b></span>
+                <span>변경 추적률 <b>100%</b></span>
+              </div>
+              <p>
+                QR 인식 성공률 72%에서 91%, EMVCo QR 파싱 성공률 65%에서 92%로 개선되었으며,
+                파일 단위 변경 이력과 검증 증적을 CM 패키지 기준으로 추적할 수 있습니다.
+              </p>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
